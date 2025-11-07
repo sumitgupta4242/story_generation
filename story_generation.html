@@ -1,0 +1,244 @@
+<!DOCTYPE html>
+<html lang="en" class="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI Story Generator</title>
+    <!-- 1. Load Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- 2. Configure Tailwind for dark mode and Inter font -->
+    <script>
+        tailwind.config = {
+            darkMode: 'class',
+            theme: {
+                extend: {
+                    fontFamily: {
+                        sans: ['Inter', 'sans-serif'],
+                    },
+                },
+            },
+        }
+    </script>
+    <!-- 3. Basic Styling -->
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+        }
+        /* Custom spinner */
+        .loader {
+            border: 4px solid rgba(255, 255, 255, 0.3);
+            border-left-color: #A78BFA; /* deepPurpleAccent */
+            border-radius: 50%;
+            width: 24px;
+            height: 24px;
+            animation: spin 1s linear infinite;
+        }
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+    </style>
+</head>
+<body class="bg-gray-900 text-gray-100 flex items-center justify-center min-h-screen p-4">
+
+    <div class="bg-gray-800 shadow-2xl rounded-2xl p-6 md:p-8 w-full max-w-2xl">
+        
+        <!-- Header -->
+        <h1 class="text-2xl md:text-3xl font-bold text-center text-white mb-6">
+            AI Story Generator
+        </h1>
+
+        <!-- Input Form -->
+        <div class="space-y-4">
+            <!-- API Key Input -->
+            <div>
+                <label for="api-key" class="block text-sm font-medium text-gray-300 mb-1">
+                    Google AI API Key
+                </label>
+                <input type="password" id="api-key" class="w-full bg-gray-700 border border-gray-600 text-white rounded-lg p-3 focus:ring-2 focus:ring-purple-400 focus:border-purple-400 outline-none transition" placeholder="Enter your API key">
+                <p class="text-xs text-gray-400 mt-1">Your key is not stored. Required for AI calls.</p>
+            </div>
+
+            <!-- Project Title Input -->
+            <div>
+                <label for="project-title" class="block text-sm font-medium text-gray-300 mb-1">
+                    Project Title
+                </label>
+                <input type="text" id="project-title" class="w-full bg-gray-700 border border-gray-600 text-white rounded-lg p-3 focus:ring-2 focus:ring-purple-400 focus:border-purple-400 outline-none transition" placeholder="e.g., Space Pirates of the Crimson Nebula">
+            </div>
+
+            <!-- Project Summary Input -->
+            <div>
+                <label for="project-summary" class="block text-sm font-medium text-gray-300 mb-1">
+                    Project Summary
+                </label>
+                <textarea id="project-summary" rows="4" class="w-full bg-gray-700 border border-gray-600 text-white rounded-lg p-3 focus:ring-2 focus:ring-purple-400 focus:border-purple-400 outline-none transition" placeholder="e.g., A rogue captain discovers an ancient alien artifact..."></textarea>
+            </div>
+
+            <!-- Generate Button & Loader -->
+            <div class="pt-2">
+                <button id="generate-button" class="w-full bg-purple-600 hover:bg-purple-700 text-white font-bold py-3 px-4 rounded-lg transition duration-300 ease-in-out flex items-center justify-center space-x-2">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m12 3-1.912 5.813a2 2 0 0 1-1.275 1.275L3 12l5.813 1.912a2 2 0 0 1 1.275 1.275L12 21l1.912-5.813a2 2 0 0 1 1.275-1.275L21 12l-5.813-1.912a2 2 0 0 1-1.275-1.275L12 3Z"/><path d="M5 3v4"/><path d="M19 17v4"/><path d="M3 5h4"/><path d="M17 19h4"/></svg>
+                    <span>Generate Story</span>
+                </button>
+                <div id="loader" class="hidden flex justify-center items-center py-3">
+                    <div class="loader"></div>
+                    <span class="ml-3 text-gray-400">Generating your story...</span>
+                </div>
+            </div>
+        </div>
+
+        <!-- Result Display Area -->
+        <div id="result-container" class="mt-6 hidden">
+            <div id="result-box" class="bg-gray-900 border border-gray-700 rounded-lg p-4">
+                <h2 class="text-xl font-semibold text-white mb-3">Your Generated Story</h2>
+                <div id="story-output" class="text-gray-300 whitespace-pre-wrap"></div>
+            </div>
+        </div>
+
+        <!-- Error Message Box -->
+        <div id="error-box" class="mt-6 hidden bg-red-800 border border-red-600 text-red-100 p-4 rounded-lg">
+            <h3 class="font-bold">Error</h3>
+            <p id="error-message"></p>
+        </div>
+
+    </div>
+
+    <!-- JavaScript Logic -->
+    <script>
+        // Get DOM elements
+        const apiKeyInput = document.getElementById('api-key');
+        const titleInput = document.getElementById('project-title');
+        const summaryInput = document.getElementById('project-summary');
+        const generateButton = document.getElementById('generate-button');
+        const loader = document.getElementById('loader');
+        const resultContainer = document.getElementById('result-container');
+        const storyOutput = document.getElementById('story-output');
+        const errorBox = document.getElementById('error-box');
+        const errorMessage = document.getElementById('error-message');
+
+        const MODEL_NAME = 'gemini-2.5-flash-preview-09-2025';
+
+        // Add click listener to the button
+        generateButton.addEventListener('click', handleGenerateClick);
+
+        async function handleGenerateClick() {
+            // 1. Get all input values
+            const apiKey = apiKeyInput.value.trim();
+            const title = titleInput.value.trim();
+            const summary = summaryInput.value.trim();
+
+            // 2. Validate inputs
+            if (!apiKey || !title || !summary) {
+                showError("Please fill in all fields: API Key, Project Title, and Project Summary.");
+                return;
+            }
+
+            // 3. Set UI to loading state
+            setLoading(true);
+
+            // 4. Construct the prompt
+            const prompt =
+                `You are a creative storyteller. Write a short, engaging story (around 200-300 words) based on the following project idea:\n\n` +
+                `Title: ${title}\n` +
+                `Summary: ${summary}\n\n` +
+                `Story:`;
+
+            // 5. Call the API
+            try {
+                const generatedText = await callGeminiAPI(prompt, apiKey);
+                showResult(generatedText);
+            } catch (error) {
+                console.error(error);
+                showError(`An error occurred: ${error.message}`);
+            } finally {
+                // 6. Restore UI from loading state
+                setLoading(false);
+            }
+        }
+
+        /**
+         * Calls the Gemini API with exponential backoff.
+         */
+        async function callGeminiAPI(prompt, apiKey, retries = 3, delay = 1000) {
+            const API_URL = `https://generativelanguage.googleapis.com/v1beta/models/${MODEL_NAME}:generateContent?key=${apiKey}`;
+
+            const payload = {
+                contents: [
+                    {
+                        parts: [
+                            { text: prompt }
+                        ]
+                    }
+                ]
+            };
+            
+            try {
+                const response = await fetch(API_URL, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify(payload),
+                });
+
+                if (!response.ok) {
+                    if (response.status === 429 && retries > 0) {
+                        // Throttled, retry with backoff
+                        await new Promise(res => setTimeout(res, delay));
+                        return callGeminiAPI(prompt, apiKey, retries - 1, delay * 2);
+                    }
+                    const errorBody = await response.json();
+                    throw new Error(errorBody.error?.message || `HTTP error! status: ${response.status}`);
+                }
+
+                const data = await response.json();
+
+                if (data.candidates && data.candidates[0].content && data.candidates[0].content.parts[0].text) {
+                    return data.candidates[0].content.parts[0].text;
+                } else {
+                    throw new Error("Invalid response structure from API.");
+                }
+            } catch (error) {
+                // Handle network errors or retries exhaustion
+                if (retries === 0) {
+                    throw new Error(`API call failed after several retries: ${error.message}`);
+                }
+                // For other errors, retry if retries are left
+                if(retries > 0) {
+                    await new Promise(res => setTimeout(res, delay));
+                    return callGeminiAPI(prompt, apiKey, retries - 1, delay * 2);
+                }
+                throw error;
+            }
+        }
+
+        // --- UI Helper Functions ---
+
+        function setLoading(isLoading) {
+            if (isLoading) {
+                generateButton.classList.add('hidden');
+                loader.classList.remove('hidden');
+                resultContainer.classList.add('hidden');
+                errorBox.classList.add('hidden');
+            } else {
+                generateButton.classList.remove('hidden');
+                loader.classList.add('hidden');
+            }
+        }
+
+        function showResult(text) {
+            storyOutput.textContent = text;
+            resultContainer.classList.remove('hidden');
+            errorBox.classList.add('hidden');
+        }
+
+        function showError(message) {
+            errorMessage.textContent = message;
+            errorBox.classList.remove('hidden');
+            resultContainer.classList.add('hidden');
+        }
+
+    </script>
+
+</body>
+</html>
